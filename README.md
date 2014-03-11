@@ -1,4 +1,4 @@
-openCMISTest
-============
+Welcome
+=======
 
-Repository to store OpenCMIS test code
+Repository to store OpenCMIS test code.
