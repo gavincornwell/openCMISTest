@@ -1,13 +1,20 @@
+package com.gavincornwell;
+
 import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import junit.framework.Test;
+import junit.framework.TestCase;
+import junit.framework.TestSuite;
 
 import org.apache.chemistry.opencmis.client.api.CmisObject;
 import org.apache.chemistry.opencmis.client.api.Document;
 import org.apache.chemistry.opencmis.client.api.Folder;
 import org.apache.chemistry.opencmis.client.api.ItemIterable;
 import org.apache.chemistry.opencmis.client.api.ObjectId;
+import org.apache.chemistry.opencmis.client.api.ObjectType;
 import org.apache.chemistry.opencmis.client.api.Repository;
 import org.apache.chemistry.opencmis.client.api.Session;
 import org.apache.chemistry.opencmis.client.api.SessionFactory;
@@ -19,83 +26,108 @@ import org.apache.chemistry.opencmis.commons.enums.BindingType;
 import org.apache.chemistry.opencmis.commons.enums.VersioningState;
 
 /**
- * Test class to exercise OpenCMIS.
- * 
- * @author gavinc
+ * Unit test for exercising various CMIS operations.
  */
-public class OpenCMISTest
+public class OpenCMISClientTest extends TestCase
 {
-    public static void main(String[] args)
+    // TODO: Upgrade to JUnit 4 and use annotations
+    //       Use beforeTest to setup the session
+    
+    /**
+     * Create the test case
+     *
+     * @param testName name of the test case
+     */
+    public OpenCMISClientTest(String testName)
     {
-        // create test harness
-        OpenCMISTest test = new OpenCMISTest();
+        super(testName);
+    }
+
+    /**
+     * @return the suite of tests being tested
+     */
+    public static Test suite()
+    {
+        return new TestSuite(OpenCMISClientTest.class);
+    }
+
+    /**
+     * Tests connecting to a CMIS repository and retrieving the children of the root folder.
+     */
+    public void testConnection()
+    {
+        Map<String, String> params = this.getConnectionParameters(null);
         
-        try
+        // list the repositories
+        SessionFactory sf = SessionFactoryImpl.newInstance();
+        List<Repository> repos = sf.getRepositories(params);
+        assertTrue("There should be at least one repository!", repos.size() > 0);
+        
+        System.out.println("There are " + repos.size() + " repositories.");
+        String repoId = null;
+        for (Repository repo : repos)
         {
-            // test basic connection
-            //test.testConnection();
-        
-            // test checkout/checkin
-            test.testCheckoutIn();
+            System.out.println("Repository ID: " + repo.getId());
+            
+            if (repoId == null)
+            {
+                repoId = repo.getId();
+            }
         }
-        catch (Exception e)
+        
+        // create a session using the first repo found above
+        params.put(SessionParameter.REPOSITORY_ID, repoId);
+        Session s = sf.createSession(params);
+        assertNotNull("Expected a session to be created", s);
+        System.out.println("Session created.");
+        
+        // retrieve the root folder
+        Folder root = s.getRootFolder();
+        assertNotNull("Expected a root folder", root);
+        String rootName = root.getName();
+        System.out.println("Root folder is named: " + rootName);
+        
+        // retrieve and list the children
+        System.out.println("Retrieving children...");
+        ItemIterable<CmisObject> kids = root.getChildren();
+        assertTrue("There should be at least one child node!", kids.getTotalNumItems() > 0);
+        System.out.println("There are " + kids.getTotalNumItems() + " children.");
+        for (CmisObject obj : kids)
         {
-            System.err.println("ERROR: " + e.getMessage());
+            System.out.println(obj.getName());
         }
     }
     
-	/**
-	 * Tests connecting to a CMIS repository and retrieving the children of the root folder.
-	 */
-    public void testConnection()
+    public void testTypeDefinitions() throws Exception
     {
-    	Map<String, String> params = this.getConnectionParameters(null);
-    	
-        // list the repositories
-    	SessionFactory sf = SessionFactoryImpl.newInstance();
-    	List<Repository> repos = sf.getRepositories(params);
-    	System.out.println("There are " + repos.size() + " repositories.");
-    	String repoId = null;
-    	for (Repository repo : repos)
-    	{
-    		System.out.println("Repository ID: " + repo.getId());
-    		
-    		if (repoId == null)
-    		{
-    		    repoId = repo.getId();
-    		}
-    	}
-    	
-    	// create a session using the first repo found above
-    	params.put(SessionParameter.REPOSITORY_ID, repoId);
-    	Session s = sf.createSession(params);
-    	System.out.println("Session created.");
-    	
-    	// retrieve the root folder
-    	Folder root = s.getRootFolder();
-    	String rootName = root.getName();
-    	System.out.println("Root folder is named: " + rootName);
-    	
-    	// retrieve and list the children
-    	System.out.println("Retrieving children...");
-    	ItemIterable<CmisObject> kids = root.getChildren();
-    	System.out.println("There are " + kids.getTotalNumItems() + " children.");
-    	for (CmisObject obj : kids)
-    	{
-    		System.out.println(obj.getName());
-    	}
+        Map<String, String> params = this.getConnectionParameters("-default-");
+        
+        // create a session
+        SessionFactory sf = SessionFactoryImpl.newInstance();
+        Session s = sf.createSession(params);
+        assertNotNull("Expected a session to be created", s);
+        System.out.println("Session created.");
+        
+        ObjectType documentTypeDefinition = s.getTypeDefinition("cmis:document");
+        assertNotNull("Expected to receive a document type definition", documentTypeDefinition);
+        assertTrue("Expected a display name of Document", documentTypeDefinition.getDisplayName().equals("Document"));
+        
+        ObjectType exifAspectDefinition = s.getTypeDefinition("P:exif:exif");
+        assertNotNull("Expected to receive an exif aspect definition", exifAspectDefinition);
+        assertTrue("Expected a display name of EXIF", exifAspectDefinition.getDisplayName().equals("EXIF"));
     }
-	
+    
     /**
      * Test checkout and checkin of a document
      */
     public void testCheckoutIn() throws Exception
     {
-        Map<String, String> params = this.getConnectionParameters("6a9504f5-b690-4a8b-9c33-a1128fa858bb");
+        Map<String, String> params = this.getConnectionParameters("-default-");
         
         // create a session
         SessionFactory sf = SessionFactoryImpl.newInstance();
         Session s = sf.createSession(params);
+        assertNotNull("Expected a session to be created", s);
         System.out.println("Session created.");
         
         // create a folder in the root of the repo
@@ -149,7 +181,8 @@ public class OpenCMISTest
         params.put(SessionParameter.PASSWORD, "admin");
         
         //params.put(SessionParameter.ATOMPUB_URL, "http://cmis.alfresco.com/service/cmis");
-        params.put(SessionParameter.ATOMPUB_URL, "http://localhost:8080/alfresco/cmisatom");
+        //params.put(SessionParameter.ATOMPUB_URL, "http://localhost:8080/alfresco/cmisatom");
+        params.put(SessionParameter.ATOMPUB_URL, "http://localhost:8080/alfresco/api/-default-/public/cmis/versions/1.0/atom");
         
         if (repoId != null && repoId.length() > 0)
         {
