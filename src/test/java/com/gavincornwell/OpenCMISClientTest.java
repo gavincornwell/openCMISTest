@@ -1,13 +1,13 @@
 package com.gavincornwell;
 
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
 import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import junit.framework.Test;
-import junit.framework.TestCase;
-import junit.framework.TestSuite;
 
 import org.apache.chemistry.opencmis.client.api.CmisObject;
 import org.apache.chemistry.opencmis.client.api.Document;
@@ -24,36 +24,20 @@ import org.apache.chemistry.opencmis.commons.SessionParameter;
 import org.apache.chemistry.opencmis.commons.data.ContentStream;
 import org.apache.chemistry.opencmis.commons.enums.BindingType;
 import org.apache.chemistry.opencmis.commons.enums.VersioningState;
+import org.junit.Test;
 
 /**
  * Unit test for exercising various CMIS operations.
  */
-public class OpenCMISClientTest extends TestCase
+public class OpenCMISClientTest
 {
     // TODO: Upgrade to JUnit 4 and use annotations
     //       Use beforeTest to setup the session
-    
-    /**
-     * Create the test case
-     *
-     * @param testName name of the test case
-     */
-    public OpenCMISClientTest(String testName)
-    {
-        super(testName);
-    }
-
-    /**
-     * @return the suite of tests being tested
-     */
-    public static Test suite()
-    {
-        return new TestSuite(OpenCMISClientTest.class);
-    }
 
     /**
      * Tests connecting to a CMIS repository and retrieving the children of the root folder.
      */
+    @Test
     public void testConnection()
     {
         Map<String, String> params = this.getConnectionParameters(null);
@@ -158,6 +142,10 @@ public class OpenCMISClientTest extends TestCase
         // retrieve the pwc
         Document pwc = (Document)s.getObject(pwcId);
         
+        // get all the checked out documents
+        ItemIterable<Document> checkedOutDocs = s.getCheckedOutDocs();
+        assertTrue("There should be at least one document checked out", checkedOutDocs.getTotalNumItems() > 0);
+        
         // checkin the file
         content = "This is some updated test content.";
         buf = content.getBytes("UTF-8");
@@ -172,6 +160,57 @@ public class OpenCMISClientTest extends TestCase
         System.out.println("test.txt has " + versions.size() + " versions");
     }
     
+    public void testBulkUpdate() throws Exception
+    {
+        Map<String, String> params = this.getConnectionParameters("-default-");
+        
+        // create a session
+        SessionFactory sf = SessionFactoryImpl.newInstance();
+        Session s = sf.createSession(params);
+        assertNotNull("Expected a session to be created", s);
+        System.out.println("Session created.");
+        
+        // create a folder in the root of the repo
+        String folderName = "testFolder" + System.currentTimeMillis();
+        Map<String, String> folderProps = new HashMap<String, String>(2);
+        folderProps.put(PropertyIds.OBJECT_TYPE_ID, "cmis:folder");
+        folderProps.put(PropertyIds.NAME, folderName);
+        Folder testFolder = s.getRootFolder().createFolder(folderProps);
+        System.out.println("Created folder " + folderName + " with id of " + testFolder.getId());
+        
+        // create 5 files in the test folder
+        ArrayList<CmisObject> createdDocuments = new ArrayList<CmisObject>(5);
+        for (int x = 0; x < 5; x++)
+        {
+            String fileName = "test" + x + ".txt";
+            String mimetype = "text/plain; charset=UTF-8";
+            String content = "This is some test content.";
+            byte[] buf = content.getBytes("UTF-8");
+            ByteArrayInputStream input = new ByteArrayInputStream(buf);
+            ContentStream contentStream = s.getObjectFactory().createContentStream(fileName, buf.length, mimetype, input);
+            Map<String, Object> fileProps = new HashMap<String, Object>();
+            fileProps.put(PropertyIds.OBJECT_TYPE_ID, "cmis:document");
+            fileProps.put(PropertyIds.NAME, fileName);
+            Document doc = testFolder.createDocument(fileProps, contentStream, VersioningState.MAJOR);
+            System.out.println("Created " + fileName + " with id of " + doc.getId());
+            
+            createdDocuments.add(doc);
+        }
+        
+        // bulk update all the documents with the same property
+        String bulkDescription = "Bulk update description";
+        // TODO: exif aspect property
+        Map<String, Object> bulkProps = new HashMap<String, Object>();
+        bulkProps.put(PropertyIds.DESCRIPTION, bulkDescription);
+        s.bulkUpdateProperties(createdDocuments, bulkProps, null, null);
+        
+        // verify all documents have the updated properties
+        
+        
+        // delete the test folder created
+        testFolder.delete(true);
+    }
+    
     private Map<String, String> getConnectionParameters(String repoId)
     {
         // setup parameters
@@ -182,7 +221,7 @@ public class OpenCMISClientTest extends TestCase
         
         //params.put(SessionParameter.ATOMPUB_URL, "http://cmis.alfresco.com/service/cmis");
         //params.put(SessionParameter.ATOMPUB_URL, "http://localhost:8080/alfresco/cmisatom");
-        params.put(SessionParameter.ATOMPUB_URL, "http://localhost:8080/alfresco/api/-default-/public/cmis/versions/1.0/atom");
+        params.put(SessionParameter.ATOMPUB_URL, "http://localhost:8080/alfresco/api/-default-/public/cmis/versions/1.1/atom");
         
         if (repoId != null && repoId.length() > 0)
         {
